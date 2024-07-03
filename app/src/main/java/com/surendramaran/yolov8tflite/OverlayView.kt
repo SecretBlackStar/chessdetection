@@ -18,11 +18,16 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     private var boxPaint = Paint()
     private var textBackgroundPaint = Paint()
     private var textPaint = Paint()
-
+    private var status: Int = 0
     private var bounds = Rect()
+    private var errorTextPaint = Paint()
 
     init {
         initPaints()
+    }
+
+    fun setStatus(value: Int) {
+        status = value
     }
 
     fun clear() {
@@ -42,6 +47,10 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         textPaint.style = Paint.Style.FILL
         textPaint.textSize = 50f
 
+        errorTextPaint.color = Color.RED
+        errorTextPaint.style = Paint.Style.FILL
+        errorTextPaint.textSize = 100f
+
         boxPaint.color = ContextCompat.getColor(context!!, R.color.bounding_box_color)
         boxPaint.strokeWidth = 8F
         boxPaint.style = Paint.Style.STROKE
@@ -49,28 +58,38 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
 
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
+//        if(status == 1) {
+//            val left = 100 // left coordinate
+//            val top = 1000 // top coordinate
+//            val right = 200 // right coordinate (width)
+//            val bottom = 200 // bottom coordinate (height)
+//            canvas.drawText("Hand is Detected", left.toFloat(), top.toFloat(), errorTextPaint)
+//            return
+//        }
 
-        results.forEach {
-            val left = it.x1 * width
-            val top = it.y1 * height
-            val right = it.x2 * width
-            val bottom = it.y2 * height
+        if(status == 0) {
+            results.forEach {
+                val left = it.x1 * width
+                val top = it.y1 * height
+                val right = it.x2 * width
+                val bottom = it.y2 * height
 
-            canvas.drawRect(left, top, right, bottom, boxPaint)
-            val drawableText = it.clsName
+                canvas.drawRect(left, top, right, bottom, boxPaint)
+                val drawableText = it.clsName
 
-            textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
-            val textWidth = bounds.width()
-            val textHeight = bounds.height()
-            canvas.drawRect(
-                left,
-                top,
-                left + textWidth + BOUNDING_RECT_TEXT_PADDING,
-                top + textHeight + BOUNDING_RECT_TEXT_PADDING,
-                textBackgroundPaint
-            )
-            canvas.drawText(drawableText, left, top + bounds.height(), textPaint)
+                textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
+                val textWidth = bounds.width()
+                val textHeight = bounds.height()
+                canvas.drawRect(
+                    left,
+                    top,
+                    left + textWidth + BOUNDING_RECT_TEXT_PADDING,
+                    top + textHeight + BOUNDING_RECT_TEXT_PADDING,
+                    textBackgroundPaint
+                )
+                canvas.drawText(drawableText, left, top + bounds.height(), textPaint)
 
+            }
         }
     }
 

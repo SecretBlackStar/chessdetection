@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -162,6 +163,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onEmptyDetect() {
         binding.overlay.invalidate()
+        binding.overlay.setStatus(1)
     }
 
     override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
@@ -171,6 +173,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 setResults(boundingBoxes)
                 invalidate()
             }
+            binding.overlay.setStatus(0)
         }
     }
 }
