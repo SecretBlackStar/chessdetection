@@ -2,8 +2,13 @@ package com.surendramaran.yolov8tflite
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.os.SystemClock
+import com.surendramaran.yolov8tflite.Constants.BOARD_PATH
+import com.surendramaran.yolov8tflite.Constants.MULTI_BOARD
+import com.surendramaran.yolov8tflite.Constants.NO_BOARD
 import com.surendramaran.yolov8tflite.Constants.NO_PIECE
+import com.surendramaran.yolov8tflite.Constants.SHOW_ERROR
 import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -26,6 +31,7 @@ class Detector(
 ) {
 
     private var interpreter: Interpreter? = null
+    private var board_interpreter: Interpreter? = null
     private var labels = mutableListOf<String>()
 
     private var tensorWidth = 0
@@ -33,12 +39,34 @@ class Detector(
     private var numChannel = 0
     private var numElements = 0
 
+    private var board_tensorWidth = 0
+    private var board_tensorHeight = 0
+    private var board_numChannel = 0
+    private var board_numElements = 0
+
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
 
+    fun board_setup() {
+        val model = FileUtil.loadMappedFile(context, BOARD_PATH)
+        val options = Interpreter.Options()
+        options.numThreads = 4
+        board_interpreter = Interpreter(model, options)
+
+        val inputShape = board_interpreter?.getInputTensor(0)?.shape() ?: return
+        val outputShape = board_interpreter?.getOutputTensor(0)?.shape() ?: return
+
+        board_tensorWidth = inputShape[1]
+        board_tensorHeight = inputShape[2]
+        board_numChannel = outputShape[1]
+        board_numElements = outputShape[2]
+    }
     fun setup() {
+
+        board_setup()
+
         val model = FileUtil.loadMappedFile(context, modelPath)
         val options = Interpreter.Options()
         options.numThreads = 4
@@ -76,23 +104,56 @@ class Detector(
 
     fun detect(frame: Bitmap, binding: ActivityMainBinding) {
         interpreter ?: return
+        board_interpreter ?: return
         if (tensorWidth == 0) return
         if (tensorHeight == 0) return
         if (numChannel == 0) return
         if (numElements == 0) return
 
+        if (board_tensorWidth == 0) return
+        if (board_tensorHeight == 0) return
+        if (board_numChannel == 0) return
+        if (board_numElements == 0) return
+
         var inferenceTime = SystemClock.uptimeMillis()
 
-        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        // ============Board Detect================
+        var resizedBitmap = Bitmap.createScaledBitmap(frame, board_tensorWidth, board_tensorHeight, false)
 
-        val tensorImage = TensorImage(DataType.FLOAT32)
+        var tensorImage = TensorImage(DataType.FLOAT32)
         tensorImage.load(resizedBitmap)
-        val processedImage = imageProcessor.process(tensorImage)
-        val imageBuffer = processedImage.buffer
+        var processedImage = imageProcessor.process(tensorImage)
+        var imageBuffer = processedImage.buffer
 
-        val output = TensorBuffer.createFixedSize(intArrayOf(1 , numChannel, numElements), OUTPUT_IMAGE_TYPE)
+        var output = TensorBuffer.createFixedSize(intArrayOf(1 , board_numChannel, board_numElements), OUTPUT_IMAGE_TYPE)
+        board_interpreter?.run(imageBuffer, output.buffer)
+
+        var board_bestBoxes = bestBox(output.floatArray, 2)
+        if(board_bestBoxes == null) {
+            binding.overlay.setStatus(NO_BOARD)
+            detectorListener.onEmptyDetect()
+            return
+        }
+
+        var cnt = board_bestBoxes.count()
+        if(cnt >= 2) {
+            binding.overlay.setStatus(MULTI_BOARD)
+            binding.overlay.setError(cnt.toString())
+            detectorListener.onEmptyDetect()
+            return
+        }
+
+        //=============Piece Detect================
+        frame
+        resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+
+        tensorImage = TensorImage(DataType.FLOAT32)
+        tensorImage.load(resizedBitmap)
+        processedImage = imageProcessor.process(tensorImage)
+        imageBuffer = processedImage.buffer
+
+        output = TensorBuffer.createFixedSize(intArrayOf(1 , numChannel, numElements), OUTPUT_IMAGE_TYPE)
         interpreter?.run(imageBuffer, output.buffer)
-
 
         val bestBoxes = bestBox(output.floatArray)
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
@@ -104,41 +165,73 @@ class Detector(
             return
         }
 
-        detectorListener.onDetect(bestBoxes, inferenceTime)
+        detectorListener.onDetect(bestBoxes + board_bestBoxes!!, inferenceTime)
     }
 
-    private fun bestBox(array: FloatArray) : List<BoundingBox>? {
+    private fun detectCount(array: FloatArray): Int {
+        var cnt = 0
+        for (c in 0 until board_numElements) {
+            var maxConf = -1.0f
+            var j = 4
+            var arrayIdx = c + board_numElements * j
+            while (j < board_numChannel){
+                if (array[arrayIdx] > maxConf) {
+                    maxConf = array[arrayIdx]
+                }
+                j++
+                arrayIdx += board_numElements
+            }
+
+            if (maxConf > BOARD_CONFIDENCE_THRESHOLD) {
+                cnt ++
+            }
+        }
+        return cnt
+    }
+    private fun bestBox(array: FloatArray, type: Int = 1) : List<BoundingBox>? {
 
         val boundingBoxes = mutableListOf<BoundingBox>()
 
-        for (c in 0 until numElements) {
+        val tmp_numElements = if( type == 1 ) numElements else board_numElements
+        val tmp_numChannel = if( type == 1 ) numChannel else board_numChannel
+
+        for (c in 0 until tmp_numElements) {
             var maxConf = -1.0f
             var maxIdx = -1
             var j = 4
-            var arrayIdx = c + numElements * j
-            while (j < numChannel){
+            var arrayIdx = c + tmp_numElements * j
+            while (j < tmp_numChannel){
                 if (array[arrayIdx] > maxConf) {
                     maxConf = array[arrayIdx]
                     maxIdx = j - 4
                 }
                 j++
-                arrayIdx += numElements
+                arrayIdx += tmp_numElements
             }
 
-            if (maxConf > CONFIDENCE_THRESHOLD) {
-                val clsName = labels[maxIdx]
+            var tmp = 0.0F
+            if ( type == 1) tmp = CONFIDENCE_THRESHOLD else tmp = BOARD_CONFIDENCE_THRESHOLD
+
+            if (maxConf > tmp) {
+                var clsName = "chessboard"
+                if(type == 1)
+                    clsName = labels[maxIdx]
                 val cx = array[c] // 0
-                val cy = array[c + numElements] // 1
-                val w = array[c + numElements * 2]
-                val h = array[c + numElements * 3]
+                val cy = array[c + tmp_numElements] // 1
+                val w = array[c + tmp_numElements * 2]
+                val h = array[c + tmp_numElements * 3]
                 val x1 = cx - (w/2F)
-                val y1 = cy - (h/2F)
+                var y1 = cy - (h/2F)
                 val x2 = cx + (w/2F)
                 val y2 = cy + (h/2F)
                 if (x1 < 0F || x1 > 1F) continue
                 if (y1 < 0F || y1 > 1F) continue
                 if (x2 < 0F || x2 > 1F) continue
                 if (y2 < 0F || y2 > 1F) continue
+
+                if(type == 2) {
+                    y1 -= (y2 - y1) / 20.0F
+                }
 
                 boundingBoxes.add(
                     BoundingBox(
@@ -199,6 +292,7 @@ class Detector(
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
         private const val CONFIDENCE_THRESHOLD = 0.3F
+        private const val BOARD_CONFIDENCE_THRESHOLD = 0.5F
         private const val IOU_THRESHOLD = 0.5F
     }
 }

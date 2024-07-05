@@ -20,7 +20,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     private var textPaint = Paint()
     private var errorTextPaint = Paint()
     private var bounds = Rect()
-    private var status: Int = 0
+    private var status : Int = 0
+    private var error = String()
 
     private var colors = mapOf(
         Pair("Black-Bishop", Color.parseColor("#EB3324")),
@@ -34,7 +35,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         Pair("Black-Rook", Color.parseColor("#F9E11B")),
         Pair("White-Rook", Color.parseColor("#F9E11B")),
         Pair("Black-Pawn", Color.parseColor("#0DF8F9")),
-        Pair("White-Pawn", Color.parseColor("#0DF8F9"))
+        Pair("White-Pawn", Color.parseColor("#0DF8F9")),
+        Pair("chessboard", Color.parseColor("#FF0000"))
     )
 
     init {
@@ -80,10 +82,14 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
             var errormsg = ""
             when {
                 status == Constants.NO_PIECE  -> errormsg = "No Piece"
+                status == Constants.NO_BOARD -> errormsg = "No ChessBaord"
+                status == Constants.MULTI_BOARD -> errormsg = "Multiple Boards(" + error + ")"
+                status == Constants.SHOW_ERROR ->  errormsg = error
             }
             canvas.drawText(errormsg, left.toFloat(), top.toFloat(), errorTextPaint)
 
-            return
+            if (status != Constants.MULTI_BOARD)
+                return
         }
 
         results.forEach {
@@ -122,6 +128,9 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
         status = value
     }
 
+    fun setError(msg: String) {
+        error = msg
+    }
     fun getStatus(): Int {
         return status
     }
