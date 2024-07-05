@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
-import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -19,6 +18,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.surendramaran.yolov8tflite.Constants.LABELS_PATH
 import com.surendramaran.yolov8tflite.Constants.MODEL_PATH
+import com.surendramaran.yolov8tflite.Constants.Success
 import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 matrix, true
             )
 
-            detector.detect(rotatedBitmap)
+            detector.detect(rotatedBitmap, binding)
         }
 
         cameraProvider.unbindAll()
@@ -163,7 +163,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onEmptyDetect() {
         binding.overlay.invalidate()
-        binding.overlay.setStatus(1)
     }
 
     override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
@@ -173,7 +172,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 setResults(boundingBoxes)
                 invalidate()
             }
-            binding.overlay.setStatus(0)
+            binding.overlay.setStatus(Success)
         }
     }
 }

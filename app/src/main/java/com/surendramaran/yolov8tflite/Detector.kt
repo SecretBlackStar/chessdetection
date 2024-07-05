@@ -3,7 +3,8 @@ package com.surendramaran.yolov8tflite
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import com.surendramaran.yolov8tflite.Constants.HAND_MODEL_PATH
+import com.surendramaran.yolov8tflite.Constants.NO_PIECE
+import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.support.common.FileUtil
@@ -25,7 +26,6 @@ class Detector(
 ) {
 
     private var interpreter: Interpreter? = null
-    private var hand_interpreter: Interpreter? = null
     private var labels = mutableListOf<String>()
 
     private var tensorWidth = 0
@@ -33,38 +33,12 @@ class Detector(
     private var numChannel = 0
     private var numElements = 0
 
-    private var hand_tensorWidth = 0
-    private var hand_tensorHeight = 0
-    private var hand_numChannel = 0
-    private var hand_numElements = 0
-
-
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
 
-    fun Hand_Setup() {
-        var hand_model = FileUtil.loadMappedFile(context, HAND_MODEL_PATH)
-        val options = Interpreter.Options()
-        options.numThreads = 4
-        hand_interpreter = Interpreter(hand_model, options)
-
-        val hand_inputShape = hand_interpreter?.getInputTensor(0)?.shape() ?: return
-        val hand_outputShape = hand_interpreter?.getOutputTensor(0)?.shape() ?: return
-
-        hand_tensorWidth = hand_inputShape[1]
-        hand_tensorHeight = hand_inputShape[2]
-        hand_numChannel = hand_outputShape[1]
-        hand_numElements = hand_outputShape[2]
-
-    }
-
     fun setup() {
-        // Hand Model Init
-        Hand_Setup()
-
-        // Piece Model Init
         val model = FileUtil.loadMappedFile(context, modelPath)
         val options = Interpreter.Options()
         options.numThreads = 4
@@ -98,14 +72,10 @@ class Detector(
     fun clear() {
         interpreter?.close()
         interpreter = null
-
-        hand_interpreter?.close()
-        hand_interpreter = null
     }
 
-    fun detect(frame: Bitmap) {
+    fun detect(frame: Bitmap, binding: ActivityMainBinding) {
         interpreter ?: return
-        hand_interpreter ?: return
         if (tensorWidth == 0) return
         if (tensorHeight == 0) return
         if (numChannel == 0) return
@@ -113,40 +83,23 @@ class Detector(
 
         var inferenceTime = SystemClock.uptimeMillis()
 
-        //=============Hand Check=================
-        var resizedBitmap = Bitmap.createScaledBitmap(frame, hand_tensorWidth, hand_tensorHeight, false)
+        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
 
-        var tensorImage = TensorImage(DataType.FLOAT32)
+        val tensorImage = TensorImage(DataType.FLOAT32)
         tensorImage.load(resizedBitmap)
-        var processedImage = imageProcessor.process(tensorImage)
-        var imageBuffer = processedImage.buffer
-
-        val hand_output = TensorBuffer.createFixedSize(intArrayOf(1 , hand_numChannel, hand_numElements), OUTPUT_IMAGE_TYPE)
-
-        hand_interpreter?.run(imageBuffer, hand_output.buffer)
-        if(isExistHand(hand_output.floatArray) == true) {
-            detectorListener.onEmptyDetect()
-            return
-        }
-
-
-        //==========Piece Generator==============
-        resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-
-        tensorImage = TensorImage(DataType.FLOAT32)
-        tensorImage.load(resizedBitmap)
-        processedImage = imageProcessor.process(tensorImage)
-        imageBuffer = processedImage.buffer
+        val processedImage = imageProcessor.process(tensorImage)
+        val imageBuffer = processedImage.buffer
 
         val output = TensorBuffer.createFixedSize(intArrayOf(1 , numChannel, numElements), OUTPUT_IMAGE_TYPE)
-
         interpreter?.run(imageBuffer, output.buffer)
+
 
         val bestBoxes = bestBox(output.floatArray)
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
 
 
         if (bestBoxes == null) {
+            binding.overlay.setStatus(NO_PIECE)
             detectorListener.onEmptyDetect()
             return
         }
@@ -154,32 +107,8 @@ class Detector(
         detectorListener.onDetect(bestBoxes, inferenceTime)
     }
 
-    private fun isExistHand(array: FloatArray): Boolean {
-
-        for (c in 0 until hand_numElements) {
-            var maxConf = -1.0f
-            var maxIdx = -1
-            var j = 4
-            var arrayIdx = c + hand_numElements * j
-            while (j < hand_numChannel){
-                if (array[arrayIdx] > maxConf) {
-                    maxConf = array[arrayIdx]
-                    maxIdx = j - 4
-                }
-                j++
-                arrayIdx += hand_numElements
-            }
-
-            if (maxConf > CONFIDENCE_THRESHOLD) {
-                return true
-
-            }
-        }
-
-        return false
-    }
-
     private fun bestBox(array: FloatArray) : List<BoundingBox>? {
+
         val boundingBoxes = mutableListOf<BoundingBox>()
 
         for (c in 0 until numElements) {
@@ -218,7 +147,6 @@ class Detector(
                         cnf = maxConf, cls = maxIdx, clsName = clsName
                     )
                 )
-
             }
         }
 
