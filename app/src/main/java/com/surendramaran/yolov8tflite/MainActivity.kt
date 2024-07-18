@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
+import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -18,6 +19,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.surendramaran.yolov8tflite.Constants.LABELS_PATH
 import com.surendramaran.yolov8tflite.Constants.MODEL_PATH
+import com.surendramaran.yolov8tflite.Constants.SHOW_ERROR
 import com.surendramaran.yolov8tflite.Constants.Success
 import com.surendramaran.yolov8tflite.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
@@ -34,6 +36,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var detector: Detector
 
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var buttonAddDot: Button
+
+    private var dotsVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,8 +55,26 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
-    }
 
+        buttonAddDot = findViewById(R.id.set) as Button
+        var buttonClip = findViewById(R.id.clip) as Button
+
+        buttonClip.setOnClickListener{
+            binding.overlay.clipVisible()
+        }
+
+        buttonAddDot.setOnClickListener {
+            //binding.overlay.setError("Button Click")
+            binding.overlay.setStatus(SHOW_ERROR)
+            if (dotsVisible) {
+                binding.overlay.initDots()
+                binding.overlay.showDots()
+            } else {
+                binding.overlay.hideDots()
+            }
+            dotsVisible = !dotsVisible
+        }
+    }
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -110,7 +133,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 matrix, true
             )
 
-            detector.detect(rotatedBitmap, binding)
+            detector.detect(rotatedBitmap, binding, binding.overlay.getView())
         }
 
         cameraProvider.unbindAll()
@@ -162,7 +185,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     }
 
     override fun onEmptyDetect() {
-        binding.overlay.invalidate()
+        runOnUiThread {
+            buttonAddDot.isEnabled = false
+            binding.overlay.invalidate()
+        }
     }
 
     override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
@@ -173,6 +199,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 invalidate()
             }
             binding.overlay.setStatus(Success)
+            buttonAddDot.isEnabled = true
         }
     }
 }
